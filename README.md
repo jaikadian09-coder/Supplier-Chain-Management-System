@@ -1,153 +1,759 @@
-🚚 Supply Chain Management System (SCMS)
-A desktop-based enterprise application built to streamline operations for supply chain logistics, inventory profiling, delivery fulfillment, and financial collections.
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.*;
+import java.sql.*;
+import java.text.*;
+import net.proteanit.sql.DbUtils;
+import com.toedter.calendar.JDateChooser;
+import com.toedter.calendar.JCalendar;
 
-This system bridges a high-performance, modular Java Swing frontend with a lightweight, embedded SQLite database. It utilizes advanced UI styling alongside modern architectural patterns to provide an intuitive desktop experience for logistics administrators.
+public class App {
+    public static void main(String[] args) {
+        UIHelper.setLAF();
+        SwingUtilities.invokeLater(() -> new Login_Frame().setVisible(true));
+    }
+}
 
-🏗️ Architectural Overview
-The application follows a decoupled Two-Tier Desktop Architecture separating the presentation layer from data operations through reusable logic abstractions.
+class UIHelper {
+    // --- DB logic ---
+    static Connection conn() {
+        try {
+            Class.forName("org.sqlite.JDBC");
+            return DriverManager.getConnection("jdbc:sqlite:database.db");
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
-       +-------------------------------------------------+
-       |              Presentation Layer                 |
-       |  [App] [Login_Frame] [HomePage] [MyCalender]     |
-       +-------------------------------------------------+
-                                |
-                                v
-       +-------------------------------------------------+
-       |             Functional Modules                  |
-       |  [client_info]   [Delivery]    [Collection_tab] |
-       +-------------------------------------------------+
-                                |
-                                v
-       +-------------------------------------------------+
-       |         Data Abstraction Layer (DAL)            |
-       |  [UIHelper] -> PreparedStatement Wrappers       |
-       +-------------------------------------------------+
-                                |
-                                v
-       +-------------------------------------------------+
-       |              Persistent Storage                 |
-       |            [SQLite Database (.db)]              |
-       +-------------------------------------------------+
-1. Presentation & UI Layer
-Aero Look & Feel: Powered by the JTattoo library to replace the native operating system styling with an elegant, hardware-accelerated theme.
+    static void update(String sql, Object... p) {
+        try (Connection c = conn(); PreparedStatement s = c.prepareStatement(sql)) {
+            for (int i = 0; i < p.length; i++)
+                s.setObject(i + 1, p[i]);
+            s.execute();
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(null, e);
+        }
+    }
 
-Asynchronous Threading: Safe execution of visual windows via SwingUtilities.invokeLater() to prevent deadlocks and maintain a highly responsive main UI thread.
+    interface RS {
+        void run(ResultSet r) throws Exception;
+    }
 
-2. Data Abstraction Layer (UIHelper)
-Instead of repeating fragile JDBC connection handling across every page, the architecture uses centralized, functional interface wrappers (RS interface) to stream queries dynamically.
+    static void query(String sql, RS h, Object... p) {
+        try (Connection c = conn(); PreparedStatement s = c.prepareStatement(sql)) {
+            for (int i = 0; i < p.length; i++)
+                s.setObject(i + 1, p[i]);
+            h.run(s.executeQuery());
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(null, e);
+        }
+    }
 
-Automated garbage collection handles connection pooling natively through Java's try-with-resources blocks.
+    static void refreshTable(JTable t, String sql, Object... p) {
+        query(sql, r -> t.setModel(DbUtils.resultSetToTableModel(r)), p);
+    }
 
-⚡ Key Features
-Secure Authentication Window: Input verification built into password fields listening directly for fast-access keys (VK_ENTER).
+    // --- Form helpers ---
+    static JTextField addField(JPanel p, GridBagConstraints g, int row, String label) {
+        g.gridx = 0;
+        g.gridy = row;
+        g.weightx = 0;
+        p.add(new JLabel(label), g);
+        g.gridx = 1;
+        g.weightx = 1;
+        JTextField tf = new JTextField(15);
+        p.add(tf, g);
+        return tf;
+    }
 
-Comprehensive Client Profiling: Complete Client Relationship Management (CRM) dashboard enabling full CRUD capabilities (Create, Read, Update, Delete) linked to automated primary key indexing.
+    static void addBtn(JPanel p, JFrame f, String text, String icon, ActionListener al) {
+        JButton b = new JButton(text);
+        try {
+            b.setIcon(new ImageIcon(f.getClass().getResource(icon)));
+        } catch (Exception ignored) {
+        }
+        b.addActionListener(al);
+        p.add(b);
+    }
 
-Live Transaction Metrics: Automatic computation engines driving inventory billing calculations instantly when keys are released in the quantity or rate inputs.
+    static JPanel formPanel(String title) {
+        JPanel p = new JPanel(new GridBagLayout());
+        p.setBorder(BorderFactory.createTitledBorder(null, title, 0, 0, new Font("Arial", Font.BOLD, 14),
+                new Color(0, 102, 153)));
+        return p;
+    }
 
-Advanced Financial Management: Multi-tab interface tracking balance adjustments (Due and Advance payments) by matching past historical invoices against incoming collections.
+    static GridBagConstraints gbc() {
+        GridBagConstraints g = new GridBagConstraints();
+        g.insets = new Insets(5, 5, 5, 5);
+        g.fill = GridBagConstraints.HORIZONTAL;
+        g.anchor = GridBagConstraints.WEST;
+        return g;
+    }
 
-Hardware Integration: Built-in physical layout parsing allowing instant physical document generation directly from UI JTable components using standard OS print dialogs.
+    // --- Navigation toolbar ---
+    static JToolBar toolbar(JFrame parent) {
+        JToolBar tb = new JToolBar();
+        tb.setRollover(true);
+        tb.setFloatable(false);
+        navBtn(tb, parent, "Home", "/Data/1-Normal-Home-icon.png", () -> nav(parent, new HomePage()));
+        navBtn(tb, parent, "New Client", "/Data/new32.png", () -> nav(parent, new client_info()));
+        navBtn(tb, parent, "Transaction", "/Data/money-icon.png", () -> nav(parent, new Delivery()));
+        navBtn(tb, parent, "Collection", "/Data/Collection-2-icon.png", () -> nav(parent, new Collection_tab()));
+        navBtn(tb, parent, "Calender", "/Data/Calendar-icon.png", () -> nav(parent, new MyCalender()));
+        navBtn(tb, parent, "Close", "/Data/close32.png", () -> System.exit(0));
+        return tb;
+    }
 
-🛡️ Security Hardening
-Unlike typical legacy database scripts, this repository implements strict security measures against malicious manipulation:
+    private static void navBtn(JToolBar tb, JFrame f, String text, String icon, Runnable action) {
+        JButton b = new JButton(text);
+        try {
+            b.setIcon(new ImageIcon(f.getClass().getResource(icon)));
+        } catch (Exception ignored) {
+        }
+        b.setFocusable(false);
+        b.setHorizontalTextPosition(SwingConstants.CENTER);
+        b.setVerticalTextPosition(SwingConstants.BOTTOM);
+        b.addActionListener(e -> action.run());
+        tb.add(b);
+    }
 
-100% Parameterized Database Actions: String concatenation has been completely banned across data interactions. All execution loops run through explicit object parsing vectors:
+    private static void nav(JFrame from, JFrame to) {
+        from.dispose();
+        to.setVisible(true);
+    }
 
-Java
-UIHelper.update("INSERT INTO client_info(id,name,address,contact,datee) VALUES(NULL,?,?,?,?)",
-    txt_name.getText(), txt_address.getText(), txt_contact.getText(), dateText());
-Neutralized SQL Injections: By compiling the statement syntax ahead of parsing variables via .setObject(), user inputs are strictly classified as safe string literals rather than dynamic database actions.
+    // --- Misc ---
+    static void print(JTable t, String title) {
+        try {
+            t.print(JTable.PrintMode.NORMAL, new MessageFormat(title), new MessageFormat("Page{0,number,integer}"));
+        } catch (Exception ignored) {
+        }
+    }
 
-🗃️ Database Schema Blueprint
-The application relies on a local relational structure inside database.db. Ensure the following tables are provisioned:
+    static void setLAF() {
+        try {
+            UIManager.setLookAndFeel("com.jtattoo.plaf.aero.AeroLookAndFeel");
+        } catch (Exception ignored) {
+        }
+    }
+}
 
-SQL
--- 1. Authentication Configuration
-CREATE TABLE login_table (
-    username TEXT PRIMARY KEY,
-    password TEXT NOT NULL
-);
+class Login_Frame extends JFrame {
+    private JTextField txt_user;
+    private JPasswordField txt_pass;
 
--- 2. Client Matrix
-CREATE TABLE client_info (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    address TEXT,
-    contact TEXT,
-    datee TEXT,
-    total_delivery REAL DEFAULT 0.0,
-    total_paid_amount REAL DEFAULT 0.0,
-    total_discount REAL DEFAULT 0.0
-);
+    public Login_Frame() {
+        setTitle("Login");
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setResizable(false);
+        setSize(400, 280);
+        setLocationRelativeTo(null);
+        JPanel m = new JPanel(new BorderLayout(10, 10));
+        m.setBorder(BorderFactory.createEmptyBorder(20, 30, 20, 30));
+        JLabel t = new JLabel("Supply Chain Management", SwingConstants.CENTER);
+        t.setFont(new Font("Arial", Font.BOLD, 18));
+        t.setForeground(new Color(0, 102, 153));
+        m.add(t, BorderLayout.NORTH);
+        JPanel f = new JPanel(new GridBagLayout());
+        GridBagConstraints g = UIHelper.gbc();
+        g.insets = new Insets(8, 8, 8, 8);
+        g.gridx = 0;
+        g.gridy = 0;
+        g.weightx = 0;
+        f.add(new JLabel("Username:"), g);
+        g.gridx = 1;
+        g.weightx = 1;
+        txt_user = new JTextField(15);
+        f.add(txt_user, g);
+        g.gridx = 0;
+        g.gridy = 1;
+        g.weightx = 0;
+        f.add(new JLabel("Password:"), g);
+        g.gridx = 1;
+        g.weightx = 1;
+        txt_pass = new JPasswordField(15);
+        txt_pass.addKeyListener(new KeyAdapter() {
+            public void keyPressed(KeyEvent e) {
+                if (e.getKeyCode() == KeyEvent.VK_ENTER)
+                    doLogin();
+            }
+        });
+        f.add(txt_pass, g);
+        m.add(f, BorderLayout.CENTER);
+        JButton b = new JButton("Login");
+        b.setPreferredSize(new Dimension(120, 35));
+        b.addActionListener(e -> doLogin());
+        JPanel bp = new JPanel();
+        bp.add(b);
+        m.add(bp, BorderLayout.SOUTH);
+        setContentPane(m);
+    }
 
--- 3. Fulfillment Logistics Tracker
-CREATE TABLE delivery_table (
-    serial_no INTEGER PRIMARY KEY AUTOINCREMENT,
-    id TEXT,
-    name TEXT,
-    quantity REAL,
-    rate REAL,
-    total REAL,
-    total_delivery REAL,
-    delivery_date TEXT,
-    description TEXT
-);
+    private void doLogin() {
+        boolean[] ok = new boolean[1];
+        UIHelper.query("select * from login_table where username=? and password=?", r -> {
+            ok[0] = r.next();
+        }, txt_user.getText(), new String(txt_pass.getPassword()));
+        if (ok[0]) {
+            dispose();
+            new HomePage().setVisible(true);
+        } else
+            JOptionPane.showMessageDialog(this, "Incorrect");
+    }
+}
 
--- 4. Accounts Receivable Ledger
-CREATE TABLE collection_table (
-    serial_no INTEGER PRIMARY KEY AUTOINCREMENT,
-    id TEXT,
-    name TEXT,
-    taka REAL,
-    total_taka REAL,
-    discount REAL,
-    collection_date TEXT,
-    description TEXT
-);
+class HomePage extends JFrame {
+    public HomePage() {
+        setTitle("Supply Chain Management System");
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setSize(850, 550);
+        setLocationRelativeTo(null);
+        setLayout(new BorderLayout());
+        add(UIHelper.toolbar(this), BorderLayout.NORTH);
+        JPanel c = new JPanel(new BorderLayout());
+        c.setBackground(new Color(240, 248, 255));
+        JLabel w = new JLabel("Welcome to Supply Chain Management System", SwingConstants.CENTER);
+        w.setFont(new Font("Arial", Font.BOLD, 22));
+        w.setForeground(new Color(0, 102, 153));
+        c.add(w, BorderLayout.CENTER);
+        try {
+            c.add(new JLabel(new ImageIcon(getClass().getResource("/Data/welcome.jpg")), SwingConstants.CENTER),
+                    BorderLayout.SOUTH);
+        } catch (Exception ignored) {
+        }
+        add(c, BorderLayout.CENTER);
+        JLabel s = new JLabel("  Ready");
+        s.setBorder(BorderFactory.createLoweredBevelBorder());
+        add(s, BorderLayout.SOUTH);
+    }
+}
 
--- 5. Auto-Indexing Sequence Variables
-CREATE TABLE variable_table (
-    max_id INTEGER DEFAULT 0
-);
-🛠️ Installation & Setup Guide
-Prerequisites
-Java Development Kit (JDK): Version 8 or higher.
+class client_info extends JFrame {
+    private JTextField txt_id, txt_name, txt_address, txt_contact, search;
+    private JDateChooser txt_date;
+    private JTable client_table;
 
-Build Automation / Classpath Dependencies:
+    public client_info() {
+        setTitle("Client Information");
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        initUI();
+        set_client_id();
+        update_table();
+        setSize(844, 547);
+        setLocationRelativeTo(null);
+    }
 
-sqlite-jdbc-X.X.X.jar (SQLite Engine Driver)
+    private void initUI() {
+        setLayout(new BorderLayout(5, 5));
+        add(UIHelper.toolbar(this), BorderLayout.NORTH);
+        JPanel left = new JPanel(new BorderLayout(5, 10));
+        left.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 5));
+        JPanel sp = new JPanel(new BorderLayout(5, 0));
+        sp.setBorder(BorderFactory.createTitledBorder("Search"));
+        search = new JTextField();
+        search.setBackground(new Color(153, 204, 255));
+        search.addKeyListener(new KeyAdapter() {
+            public void keyReleased(KeyEvent e) {
+                doSearch();
+            }
+        });
+        sp.add(search, BorderLayout.CENTER);
+        left.add(sp, BorderLayout.NORTH);
 
-rs2xml.jar (Proteanit DbUtils mapping utility)
+        JPanel fp = UIHelper.formPanel("Client Information");
+        GridBagConstraints g = UIHelper.gbc();
+        txt_id = UIHelper.addField(fp, g, 0, "Client ID");
+        txt_id.setEditable(false);
+        txt_name = UIHelper.addField(fp, g, 1, "Name");
+        txt_address = UIHelper.addField(fp, g, 2, "Address");
+        txt_contact = UIHelper.addField(fp, g, 3, "Contact");
+        g.gridx = 0;
+        g.gridy = 4;
+        g.weightx = 0;
+        fp.add(new JLabel("Date"), g);
+        g.gridx = 1;
+        g.weightx = 1;
+        txt_date = new JDateChooser();
+        txt_date.setDateFormatString("yyyy-MM-dd");
+        fp.add(txt_date, g);
 
-jcalendar-X.X.X.jar (Toedter Graphical Calendar components)
+        JPanel bp = new JPanel(new GridLayout(5, 1, 5, 8));
+        bp.setBorder(BorderFactory.createTitledBorder("Options"));
+        UIHelper.addBtn(bp, this, "Save", "/Data/add.png", e -> doSave());
+        UIHelper.addBtn(bp, this, "Delete", "/Data/close.png", e -> doDelete());
+        UIHelper.addBtn(bp, this, "Update", "/Data/update.png", e -> doUpdate());
+        UIHelper.addBtn(bp, this, "Clear", "/Data/clear.png", e -> doClear());
+        UIHelper.addBtn(bp, this, "Print", "/Data/print-icon.png", e -> UIHelper.print(client_table, "Report"));
 
-JTattoo-X.X.X.jar (Aero UI Skin package)
+        JPanel cl = new JPanel(new BorderLayout(5, 5));
+        cl.add(fp, BorderLayout.CENTER);
+        cl.add(bp, BorderLayout.EAST);
+        left.add(cl, BorderLayout.CENTER);
+        add(left, BorderLayout.WEST);
+        client_table = new JTable();
+        client_table.addMouseListener(new MouseAdapter() {
+            public void mouseClicked(MouseEvent e) {
+                doTableClick();
+            }
+        });
+        JScrollPane scroll = new JScrollPane(client_table);
+        scroll.setPreferredSize(new Dimension(420, 0));
+        add(scroll, BorderLayout.CENTER);
+    }
 
-Step-by-Step Deployment
-Clone the Repository:
+    private String dateText() {
+        return ((JTextField) txt_date.getDateEditor().getUiComponent()).getText();
+    }
 
-Bash
-git clone https://github.com/yourusername/Supply-Chain-Management.git
-cd Supply-Chain-Management
-Add Assets:
-Ensure the directory path /Data/ contains your asset resources, specifically icons (add.png, money-icon.png, etc.) and your primary background canvas (welcome.jpg).
+    private void set_client_id() {
+        UIHelper.query("select max_id from variable_table", r -> {
+            if (r.next())
+                txt_id.setText("" + (r.getInt(1) + 1));
+        });
+    }
 
-Compile the Source Files:
+    private void update_table() {
+        UIHelper.refreshTable(client_table, "select id,name,address,contact,datee from client_info");
+    }
 
-Bash
-javac -cp "lib/*:" App.java
-Launch the Engine:
+    private void doSave() {
+        int[] val = new int[1];
+        UIHelper.query("select max_id from variable_table", r -> {
+            val[0] = r.next() ? r.getInt(1) + 1 : 1;
+        });
+        int n = val[0];
+        UIHelper.update("UPDATE variable_table SET max_id=?", n);
+        UIHelper.update("insert into client_info(id,name,address,contact,datee) values(NULL,?,?,?,?)",
+                txt_name.getText(), txt_address.getText(), txt_contact.getText(), dateText());
+        JOptionPane.showMessageDialog(this, "Saved");
+        txt_id.setText("" + n);
+        doClear();
+        update_table();
+    }
 
-Bash
-java -cp "lib/*:." App
-🤝 Contribution Guidelines
-Fork the codebase branch.
+    private void doDelete() {
+        if (JOptionPane.showConfirmDialog(this, "Delete?", "Delete", JOptionPane.YES_NO_OPTION) == 0) {
+            UIHelper.update("delete from client_info where id=?", txt_id.getText());
+            JOptionPane.showMessageDialog(this, "Deleted");
+            update_table();
+        }
+    }
 
-Create your feature branch (git checkout -b feature/AmazingFeature).
+    private void doUpdate() {
+        UIHelper.update("update client_info set name=?,address=?,contact=?,datee=? where id=?", txt_name.getText(),
+                txt_address.getText(), txt_contact.getText(), dateText(), txt_id.getText());
+        JOptionPane.showMessageDialog(this, "Updated");
+        update_table();
+    }
 
-Commit structural revisions cleanly (git commit -m 'Add some AmazingFeature').
+    private void doClear() {
+        set_client_id();
+        txt_name.setText("");
+        txt_address.setText("");
+        txt_contact.setText("");
+        txt_date.setDate(null);
+    }
 
-Push adjustments directly up stream (git push origin feature/AmazingFeature).
+    private void doSearch() {
+        boolean[] found = new boolean[1];
+        UIHelper.query("select * from client_info where name=?", r -> {
+            if (r.next()) {
+                fillRS(r);
+                found[0] = true;
+            }
+        }, search.getText());
+        if (!found[0])
+            UIHelper.query("select * from client_info where id=?", r -> {
+                if (r.next()) {
+                    fillRS(r);
+                    found[0] = true;
+                }
+            }, search.getText());
+        if (!found[0])
+            doClear();
+    }
 
-Open a formal Pull Request for review.
+    private void doTableClick() {
+        UIHelper.query("select * from client_info where id=?", r -> {
+            if (r.next())
+                fillRS(r);
+        }, client_table.getModel().getValueAt(client_table.getSelectedRow(), 0));
+    }
+
+    private void fillRS(ResultSet r) throws Exception {
+        txt_id.setText(r.getString("id"));
+        txt_name.setText(r.getString("name"));
+        txt_address.setText(r.getString("address"));
+        txt_contact.setText(r.getString("contact"));
+        Object d = r.getObject("datee");
+        if (d != null)
+            txt_date.setDate(new SimpleDateFormat("yyyy-MM-dd").parse(d.toString()));
+    }
+}
+
+class Delivery extends JFrame {
+    private JTextField txt_id, txt_name, txt_qty, txt_rate, txt_total, txt_totalDel, txt_remark;
+    private JDateChooser txt_date;
+    private JTable table;
+
+    public Delivery() {
+        setTitle("Delivery");
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        initUI();
+        update_table();
+        setSize(844, 547);
+        setLocationRelativeTo(null);
+    }
+
+    private void initUI() {
+        setLayout(new BorderLayout(5, 5));
+        add(UIHelper.toolbar(this), BorderLayout.NORTH);
+        JPanel fp = UIHelper.formPanel("Delivery Information");
+        GridBagConstraints g = UIHelper.gbc();
+        txt_id = UIHelper.addField(fp, g, 0, "Client ID");
+        txt_id.addKeyListener(new KeyAdapter() {
+            public void keyReleased(KeyEvent e) {
+                lookupClient();
+            }
+        });
+        txt_name = UIHelper.addField(fp, g, 1, "Name");
+        txt_name.setEditable(false);
+        txt_qty = UIHelper.addField(fp, g, 2, "Quantity");
+        txt_rate = UIHelper.addField(fp, g, 3, "Rate");
+        txt_total = UIHelper.addField(fp, g, 4, "Total");
+        txt_total.setEditable(false);
+        txt_totalDel = UIHelper.addField(fp, g, 5, "Total Delivery");
+        txt_totalDel.setEditable(false);
+        txt_remark = UIHelper.addField(fp, g, 6, "Remark");
+        g.gridx = 0;
+        g.gridy = 7;
+        g.weightx = 0;
+        fp.add(new JLabel("Date"), g);
+        g.gridx = 1;
+        g.weightx = 1;
+        txt_date = new JDateChooser();
+        txt_date.setDateFormatString("yyyy-MM-dd");
+        fp.add(txt_date, g);
+        KeyAdapter calc = new KeyAdapter() {
+            public void keyReleased(KeyEvent e) {
+                try {
+                    txt_total.setText(
+                            "" + (Double.parseDouble(txt_qty.getText()) * Double.parseDouble(txt_rate.getText())));
+                } catch (Exception ignored) {
+                }
+            }
+        };
+        txt_qty.addKeyListener(calc);
+        txt_rate.addKeyListener(calc);
+
+        JPanel bp = new JPanel(new GridLayout(3, 1, 5, 8));
+        bp.setBorder(BorderFactory.createTitledBorder("Options"));
+        UIHelper.addBtn(bp, this, "Save", "/Data/add.png", e -> doSave());
+        UIHelper.addBtn(bp, this, "Clear", "/Data/clear.png", e -> doClear());
+        UIHelper.addBtn(bp, this, "Print", "/Data/print-icon.png", e -> UIHelper.print(table, "Delivery Report"));
+
+        JPanel left = new JPanel(new BorderLayout(5, 5));
+        left.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 5));
+        JPanel cl = new JPanel(new BorderLayout(5, 5));
+        cl.add(fp, BorderLayout.CENTER);
+        cl.add(bp, BorderLayout.EAST);
+        left.add(cl, BorderLayout.CENTER);
+        add(left, BorderLayout.WEST);
+        table = new JTable();
+        JScrollPane sp = new JScrollPane(table);
+        sp.setPreferredSize(new Dimension(380, 0));
+        add(sp, BorderLayout.CENTER);
+    }
+
+    private void lookupClient() {
+        UIHelper.query("select name,total_delivery from client_info where id=?", r -> {
+            if (r.next()) {
+                txt_name.setText(r.getString(1));
+                txt_totalDel.setText(r.getString(2));
+            } else {
+                txt_name.setText("");
+                txt_totalDel.setText("");
+            }
+        }, txt_id.getText());
+    }
+
+    private void update_table() {
+        UIHelper.refreshTable(table, "select * from delivery_table");
+    }
+
+    private void doSave() {
+        double[] prev = new double[1];
+        UIHelper.query("select total_delivery from client_info where id=?", r -> {
+            prev[0] = r.next() ? r.getDouble(1) : 0;
+        }, txt_id.getText());
+        double total = Double.parseDouble(txt_total.getText()), nt = prev[0] + total;
+        String val = ((JTextField) txt_date.getDateEditor().getUiComponent()).getText();
+        UIHelper.update(
+                "insert into delivery_table(id,name,quantity,rate,total,total_delivery,delivery_date,description) values(?,?,?,?,?,?,?,?)",
+                txt_id.getText(), txt_name.getText(), txt_qty.getText(), txt_rate.getText(), txt_total.getText(),
+                "" + nt, val, txt_remark.getText());
+        UIHelper.update("update client_info set total_delivery=? where id=?", nt, txt_id.getText());
+        JOptionPane.showMessageDialog(this, "Saved");
+        doClear();
+        update_table();
+    }
+
+    private void doClear() {
+        txt_id.setText("");
+        txt_name.setText("");
+        txt_qty.setText("");
+        txt_rate.setText("");
+        txt_total.setText("");
+        txt_totalDel.setText("");
+        txt_remark.setText("");
+        txt_date.setDate(null);
+    }
+}
+
+class Collection_tab extends JFrame {
+    private JTextField txt_id, txt_name, txt_paid, txt_disc, txt_due, txt_adv, txt_remark;
+    private JDateChooser txt_date;
+    private JTable tAll, tClient;
+    private int cid = 0;
+
+    public Collection_tab() {
+        setTitle("Collection");
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        initUI();
+        refreshAll();
+        setSize(900, 600);
+        setLocationRelativeTo(null);
+    }
+
+    private void initUI() {
+        setLayout(new BorderLayout(5, 5));
+        add(UIHelper.toolbar(this), BorderLayout.NORTH);
+        JPanel fp = UIHelper.formPanel("Collection Entry");
+        GridBagConstraints g = UIHelper.gbc();
+        txt_id = UIHelper.addField(fp, g, 0, "Client ID");
+        txt_id.addKeyListener(new KeyAdapter() {
+            public void keyReleased(KeyEvent e) {
+                lookupClient();
+            }
+        });
+        txt_name = UIHelper.addField(fp, g, 1, "Name");
+        txt_name.setEditable(false);
+        txt_paid = UIHelper.addField(fp, g, 2, "Paid Amount");
+        txt_paid.setText("0");
+        txt_disc = UIHelper.addField(fp, g, 3, "Discount");
+        txt_disc.setText("0");
+        txt_due = UIHelper.addField(fp, g, 4, "Due");
+        txt_due.setText("0");
+        txt_due.setEditable(false);
+        txt_adv = UIHelper.addField(fp, g, 5, "Advance");
+        txt_adv.setText("0");
+        txt_adv.setEditable(false);
+        txt_remark = UIHelper.addField(fp, g, 6, "Remark");
+        g.gridx = 0;
+        g.gridy = 7;
+        g.weightx = 0;
+        fp.add(new JLabel("Date"), g);
+        g.gridx = 1;
+        g.weightx = 1;
+        txt_date = new JDateChooser();
+        txt_date.setDateFormatString("yyyy-MM-dd");
+        fp.add(txt_date, g);
+
+        JPanel bp = new JPanel(new GridLayout(3, 1, 5, 8));
+        bp.setBorder(BorderFactory.createTitledBorder("Options"));
+        UIHelper.addBtn(bp, this, "Done", "/Data/done.png", e -> doSave());
+        UIHelper.addBtn(bp, this, "Clear", "/Data/clear.png", e -> doClear());
+        UIHelper.addBtn(bp, this, "Print", "/Data/print-icon.png", e -> UIHelper.print(tAll, "Collection Report"));
+
+        JPanel left = new JPanel(new BorderLayout(5, 5));
+        left.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 5));
+        left.setPreferredSize(new Dimension(380, 0));
+        JPanel cl = new JPanel(new BorderLayout(5, 5));
+        cl.add(fp, BorderLayout.CENTER);
+        cl.add(bp, BorderLayout.EAST);
+        left.add(cl, BorderLayout.CENTER);
+        add(left, BorderLayout.WEST);
+
+        JTabbedPane tabs = new JTabbedPane();
+        tAll = new JTable();
+        tAll.addMouseListener(new MouseAdapter() {
+            public void mouseClicked(MouseEvent e) {
+                doTableClick();
+            }
+        });
+        tabs.addTab("All Collections", new JScrollPane(tAll));
+        tClient = new JTable();
+        tabs.addTab("Client Collections", new JScrollPane(tClient));
+        add(tabs, BorderLayout.CENTER);
+    }
+
+    private void lookupClient() {
+        UIHelper.query("select name,total_paid_amount,total_discount,total_delivery from client_info where id=?", r -> {
+            if (r.next()) {
+                txt_name.setText(r.getString(1));
+                double cal = r.getDouble(4) - r.getDouble(2) - r.getDouble(3);
+                if (cal >= 0) {
+                    txt_due.setText("" + cal);
+                    txt_adv.setText("0");
+                } else {
+                    txt_due.setText("0");
+                    txt_adv.setText("" + (-cal));
+                }
+            } else {
+                txt_name.setText("");
+                txt_due.setText("0");
+                txt_adv.setText("0");
+            }
+        }, txt_id.getText());
+    }
+
+    private void refreshAll() {
+        UIHelper.refreshTable(tAll, "select * from collection_table");
+    }
+
+    private void doSave() {
+        double[] totals = new double[2];
+        UIHelper.query("select total_paid_amount,total_discount from client_info where id=?", r -> {
+            if (r.next()) {
+                totals[0] = r.getDouble(1);
+                totals[1] = r.getDouble(2);
+            }
+        }, txt_id.getText());
+        double pa = Double.parseDouble(txt_paid.getText()), da = Double.parseDouble(txt_disc.getText());
+        cid = Integer.parseInt(txt_id.getText());
+        double tp = totals[0] + pa, td = totals[1] + da;
+        String val = ((JTextField) txt_date.getDateEditor().getUiComponent()).getText();
+        UIHelper.update(
+                "insert into collection_table(id,name,taka,total_taka,discount,collection_date,description) values(?,?,?,?,?,?,?)",
+                txt_id.getText(), txt_name.getText(), txt_paid.getText(), "" + tp, txt_disc.getText(), val,
+                txt_remark.getText());
+        UIHelper.update("update client_info set total_paid_amount=?,total_discount=? where id=?", tp, td,
+                txt_id.getText());
+        JOptionPane.showMessageDialog(this, "Done");
+        doClear();
+        refreshAll();
+        UIHelper.refreshTable(tClient, "select * from collection_table where id=?", cid);
+    }
+
+    private void doTableClick() {
+        boolean[] found = new boolean[1];
+        UIHelper.query("select * from collection_table where serial_no=?", r -> {
+            if (r.next()) {
+                cid = Integer.parseInt(r.getString("id"));
+                txt_id.setText(r.getString("id"));
+                txt_name.setText(r.getString("name"));
+                txt_remark.setText(r.getString("description"));
+                txt_disc.setText(r.getString("discount"));
+                txt_paid.setText(r.getString("taka"));
+                Object d = r.getObject("collection_date");
+                if (d != null)
+                    txt_date.setDate(new SimpleDateFormat("yyyy-MM-dd").parse(d.toString()));
+                found[0] = true;
+            }
+        }, tAll.getModel().getValueAt(tAll.getSelectedRow(), 0).toString());
+        if (found[0])
+            lookupClient();
+        UIHelper.refreshTable(tClient, "select * from collection_table where id=?", cid);
+        refreshAll();
+    }
+
+    private void doClear() {
+        txt_id.setText("");
+        txt_name.setText("");
+        txt_remark.setText("");
+        txt_disc.setText("0");
+        txt_paid.setText("0");
+        txt_adv.setText("0");
+        txt_due.setText("0");
+        txt_date.setDate(null);
+    }
+}
+
+class StockEntry extends JFrame {
+    private JTextField txt_name, txt_qty, txt_rate, txt_total, txt_remark;
+    private JTable table;
+
+    public StockEntry() {
+        setTitle("Stock Entry");
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        initUI();
+        update_table();
+        setSize(844, 547);
+        setLocationRelativeTo(null);
+    }
+
+    private void initUI() {
+        setLayout(new BorderLayout(5, 5));
+        add(UIHelper.toolbar(this), BorderLayout.NORTH);
+        JPanel fp = UIHelper.formPanel("Stock Entry");
+        GridBagConstraints g = UIHelper.gbc();
+        txt_name = UIHelper.addField(fp, g, 0, "Product Name");
+        txt_qty = UIHelper.addField(fp, g, 1, "Quantity");
+        txt_rate = UIHelper.addField(fp, g, 2, "Rate");
+        txt_total = UIHelper.addField(fp, g, 3, "Total");
+        txt_total.setEditable(false);
+        txt_remark = UIHelper.addField(fp, g, 4, "Remark");
+        KeyAdapter calc = new KeyAdapter() {
+            public void keyReleased(KeyEvent e) {
+                try {
+                    txt_total.setText(
+                            "" + (Double.parseDouble(txt_qty.getText()) * Double.parseDouble(txt_rate.getText())));
+                } catch (Exception ignored) {
+                }
+            }
+        };
+        txt_qty.addKeyListener(calc);
+        txt_rate.addKeyListener(calc);
+
+        JPanel bp = new JPanel(new GridLayout(3, 1, 5, 8));
+        bp.setBorder(BorderFactory.createTitledBorder("Options"));
+        UIHelper.addBtn(bp, this, "Save", "/Data/add.png", e -> doSave());
+        UIHelper.addBtn(bp, this, "Clear", "/Data/clear.png", e -> doClear());
+        UIHelper.addBtn(bp, this, "Print", "/Data/print-icon.png", e -> UIHelper.print(table, "Stock Report"));
+
+        JPanel left = new JPanel(new BorderLayout(5, 5));
+        left.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 5));
+        JPanel cl = new JPanel(new BorderLayout(5, 5));
+        cl.add(fp, BorderLayout.CENTER);
+        cl.add(bp, BorderLayout.EAST);
+        left.add(cl, BorderLayout.CENTER);
+        add(left, BorderLayout.WEST);
+        table = new JTable();
+        JScrollPane sp = new JScrollPane(table);
+        sp.setPreferredSize(new Dimension(380, 0));
+        add(sp, BorderLayout.CENTER);
+    }
+
+    private void update_table() {
+        UIHelper.refreshTable(table, "select * from stock_table");
+    }
+
+    private void doSave() {
+        UIHelper.update("insert into stock_table(name,quantity,rate,total,remark) values(?,?,?,?,?)",
+                txt_name.getText(), txt_qty.getText(), txt_rate.getText(), txt_total.getText(), txt_remark.getText());
+        JOptionPane.showMessageDialog(this, "Saved");
+        doClear();
+        update_table();
+    }
+
+    private void doClear() {
+        txt_name.setText("");
+        txt_qty.setText("");
+        txt_rate.setText("");
+        txt_total.setText("");
+        txt_remark.setText("");
+    }
+}
+
+class MyCalender extends JFrame {
+    public MyCalender() {
+        setTitle("Calendar");
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setSize(500, 400);
+        setLocationRelativeTo(null);
+        setLayout(new BorderLayout());
+        add(UIHelper.toolbar(this), BorderLayout.NORTH);
+        add(new JCalendar(), BorderLayout.CENTER);
+    }
+}
