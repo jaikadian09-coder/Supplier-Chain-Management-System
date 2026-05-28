@@ -1,5 +1,3 @@
-Here is a comprehensive, production-grade README.md for your Supply Chain Management System. It is structured to look highly professional for your GitHub repository, complete with architecture breakdowns, installation guides, and security highlights.
-
 🚚 Supply Chain Management System (SCMS)
 A desktop-based enterprise application built to streamline operations for supply chain logistics, inventory profiling, delivery fulfillment, and financial collections.
 
